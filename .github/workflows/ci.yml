@@ -1,0 +1,91 @@
+# Nombre visible en la pestaña Actions de GitHub.
+name: CI - Validate Lambda
+
+# Eventos que ejecutan este workflow.
+on:
+  # Validamos cada cambio enviado a una rama feature.
+  push:
+    branches:
+      - "feature/**"
+
+  # También validamos Pull Requests hacia development o main.
+  pull_request:
+    branches:
+      - development
+      - main
+
+# Permiso mínimo necesario para leer el repositorio.
+permissions:
+  contents: read
+
+# Cancela una ejecución anterior de la misma rama si llega otro cambio.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint JavaScript
+    runs-on: ubuntu-latest
+
+    steps:
+      # Descarga el repositorio dentro del runner.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Instala Node.js 24.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: src/function/package-lock.json
+
+      # Instala exactamente las versiones del package-lock.json.
+      - name: Install dependencies
+        working-directory: src/function
+        run: npm ci
+
+      # Ejecuta ESLint.
+      - name: Run lint
+        working-directory: src/function
+        run: npm run lint
+
+  test:
+    name: Test Lambda
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: src/function/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src/function
+        run: npm ci
+
+      - name: Run tests
+        working-directory: src/function
+        run: npm test
+
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+
+    # Build solamente comienza si lint y test terminan correctamente.
+    needs:
+      - lint
+      - test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Lambda image
+        run: docker build -t lambda-poc:${{ github.sha }} .
