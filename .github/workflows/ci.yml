@@ -3,16 +3,15 @@ name: CI - Validate Lambda
 
 # Eventos que ejecutan este workflow.
 on:
-  # Validamos cada cambio enviado a una rama feature.
+  # Ejecutamos el pipeline cuando un cambio entra realmente
+  # en development o main, normalmente después de un merge.
   push:
-    branches:
-      - "feature/**"
-
-  # También validamos Pull Requests hacia development o main.
-  pull_request:
     branches:
       - development
       - main
+
+  # También permitimos ejecutarlo manualmente desde GitHub Actions.
+  workflow_dispatch:
 
 # Permiso mínimo necesario para leer el repositorio.
 permissions:
