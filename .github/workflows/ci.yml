@@ -1,63 +1,224 @@
-# Nombre visible en la pestaña Actions de GitHub.
+# ============================================================
+# NOMBRE DEL WORKFLOW
+# ============================================================
+# Este nombre aparece en la pestaña "Actions" de GitHub.
+# No afecta la ejecución; solamente permite identificar el pipeline.
 name: CI - Validate Lambda
 
-# Eventos que ejecutan este workflow.
+
+# ============================================================
+# EVENTOS QUE ACTIVAN EL WORKFLOW
+# ============================================================
+# "on" define cuándo debe comenzar automáticamente el pipeline.
 on:
-  # Ejecutamos el pipeline cuando un cambio entra realmente
-  # en development o main, normalmente después de un merge.
+
+  # "push" significa que el workflow se ejecutará cuando GitHub
+  # reciba nuevos commits en alguna de las ramas indicadas.
+  #
+  # En nuestro Git Flow esto sucederá normalmente después de:
+  #
+  # feature/* → Pull Request → merge → development
+  #
+  # El merge genera un nuevo push en development y activa el pipeline.
   push:
+
+    # Limitamos el evento push únicamente a estas ramas.
+    # Un push en una rama feature/* no ejecutará este workflow.
     branches:
+
+      # Rama del ambiente de desarrollo.
       - development
+
+      # Rama que posteriormente representará producción.
       - main
 
-  # También permitimos ejecutarlo manualmente desde GitHub Actions.
+  # "workflow_dispatch" agrega el botón "Run workflow"
+  # dentro de la pestaña Actions.
+  #
+  # Esto permite ejecutar el pipeline manualmente sin hacer un push.
+  # Más adelante podremos agregar parámetros como:
+  # - ambiente
+  # - región
+  # - tipo de despliegue
   workflow_dispatch:
 
-# Permiso mínimo necesario para leer el repositorio.
+
+# ============================================================
+# PERMISOS DEL WORKFLOW
+# ============================================================
+# GitHub genera un token temporal llamado GITHUB_TOKEN.
+# Aquí definimos qué puede hacer ese token.
+#
+# Aplicamos el principio de mínimo privilegio:
+# por ahora el workflow solamente necesita leer el repositorio.
 permissions:
+
+  # Permite descargar y leer el código.
+  # No permite modificarlo ni crear commits.
   contents: read
 
-# Cancela una ejecución anterior de la misma rama si llega otro cambio.
+
+# ============================================================
+# CONTROL DE EJECUCIONES SIMULTÁNEAS
+# ============================================================
+# "concurrency" evita ejecuciones viejas o duplicadas.
+#
+# Ejemplo:
+# 1. Se hace un push a development.
+# 2. El pipeline comienza.
+# 3. Antes de terminar, se hace otro push a development.
+# 4. GitHub cancela el pipeline anterior.
+# 5. Solamente continúa la ejecución más reciente.
 concurrency:
+
+  # Define el identificador del grupo de concurrencia.
+  #
+  # ${{ ... }} es la sintaxis usada por GitHub Actions
+  # para evaluar expresiones y variables dinámicas.
+  #
+  # github.workflow contiene el nombre del workflow:
+  # "CI - Validate Lambda"
+  #
+  # github.ref contiene la referencia de la rama:
+  # "refs/heads/development"
+  #
+  # Así, cada workflow y rama tiene su propio grupo.
   group: ci-${{ github.workflow }}-${{ github.ref }}
+
+  # Cancela la ejecución anterior del mismo grupo si llega una nueva.
   cancel-in-progress: true
 
+
+# ============================================================
+# TRABAJOS DEL PIPELINE
+# ============================================================
+# "jobs" contiene todos los trabajos que ejecutará el workflow.
+#
+# Cada job utiliza una máquina virtual independiente y limpia.
+# Los archivos o programas creados en un job no pasan
+# automáticamente a otro job.
 jobs:
+
+  # ==========================================================
+  # JOB 1: LINT
+  # ==========================================================
+  # "lint" es el identificador interno del job.
+  # Otros jobs pueden referenciarlo mediante este identificador.
   lint:
+
+    # Nombre que aparecerá en la interfaz de GitHub Actions.
     name: Lint JavaScript
+
+    # GitHub creará una máquina virtual temporal con Ubuntu.
+    #
+    # "ubuntu-latest" no se refiere a nuestra computadora.
+    # Es un runner administrado por GitHub.
     runs-on: ubuntu-latest
 
+    # "steps" contiene las acciones ejecutadas dentro del job.
+    # Se ejecutan en orden, de arriba hacia abajo.
     steps:
-      # Descarga el repositorio dentro del runner.
+
+      # --------------------------------------------------------
+      # PASO 1: DESCARGAR EL REPOSITORIO
+      # --------------------------------------------------------
+      # El runner comienza vacío.
+      # Por eso primero debe descargar nuestro código.
       - name: Checkout repository
+
+        # "uses" ejecuta una acción reutilizable.
+        #
+        # actions/checkout es la acción oficial para descargar
+        # el repositorio dentro del runner.
+        #
+        # @v4 indica la versión mayor de la acción.
         uses: actions/checkout@v4
 
-      # Instala Node.js 24.
+      # --------------------------------------------------------
+      # PASO 2: INSTALAR NODE.JS
+      # --------------------------------------------------------
       - name: Setup Node.js
+
+        # Acción oficial que prepara Node.js en el runner.
         uses: actions/setup-node@v4
+
+        # "with" contiene parámetros entregados a la acción.
         with:
+
+          # Utilizamos la misma versión principal que tendrá Lambda.
           node-version: "24"
+
+          # Activa el caché de npm.
+          #
+          # GitHub conservará archivos descargados por npm para
+          # acelerar ejecuciones posteriores.
+          #
+          # No guarda node_modules; guarda el caché de descargas.
           cache: npm
+
+          # Indica qué package-lock.json controla el caché.
+          #
+          # Es necesario porque nuestro proyecto Node.js no está
+          # en la raíz; está dentro de src/function.
           cache-dependency-path: src/function/package-lock.json
 
-      # Instala exactamente las versiones del package-lock.json.
+      # --------------------------------------------------------
+      # PASO 3: INSTALAR DEPENDENCIAS
+      # --------------------------------------------------------
       - name: Install dependencies
+
+        # Ejecuta el comando desde esta carpeta.
+        #
+        # Es equivalente a hacer localmente:
+        # cd src/function
         working-directory: src/function
+
+        # "npm ci" instala exactamente las versiones registradas
+        # dentro de package-lock.json.
+        #
+        # Se utiliza en CI porque es más estricto y reproducible
+        # que "npm install".
         run: npm ci
 
-      # Ejecuta ESLint.
+      # --------------------------------------------------------
+      # PASO 4: ANALIZAR EL CÓDIGO
+      # --------------------------------------------------------
       - name: Run lint
+
+        # El package.json que contiene el script "lint"
+        # está ubicado en src/function.
         working-directory: src/function
+
+        # Ejecuta el script definido en package.json:
+        #
+        # "lint": "eslint ."
+        #
+        # Si ESLint encuentra un error, devuelve un código distinto
+        # de cero y GitHub marca el job como fallido.
         run: npm run lint
 
+
+  # ==========================================================
+  # JOB 2: PRUEBAS AUTOMÁTICAS
+  # ==========================================================
+  # "test" es el identificador interno del segundo job.
   test:
+
+    # Nombre mostrado en GitHub Actions.
     name: Test Lambda
+
+    # Este job utiliza otra máquina virtual independiente.
+    #
+    # No comparte la instalación realizada en el job "lint".
     runs-on: ubuntu-latest
 
     steps:
+
+      # Descarga nuevamente el código porque este runner empieza vacío.
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Instala Node.js 24 y configura el caché de npm.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -65,26 +226,78 @@ jobs:
           cache: npm
           cache-dependency-path: src/function/package-lock.json
 
+      # Instala las dependencias necesarias para ejecutar las pruebas.
       - name: Install dependencies
         working-directory: src/function
         run: npm ci
 
+      # Ejecuta el script definido en package.json:
+      #
+      # "test": "node --test"
+      #
+      # Si una prueba falla, el job completo queda en rojo.
       - name: Run tests
         working-directory: src/function
         run: npm test
 
+
+  # ==========================================================
+  # JOB 3: CONSTRUCCIÓN DE LA IMAGEN DOCKER
+  # ==========================================================
+  # "build" es el identificador interno del tercer job.
   build:
+
+    # Nombre mostrado en el diagrama de GitHub Actions.
     name: Build Docker image
+
+    # Utiliza una nueva máquina virtual de GitHub.
     runs-on: ubuntu-latest
 
-    # Build solamente comienza si lint y test terminan correctamente.
+    # "needs" define dependencias entre jobs.
+    #
+    # El job build no comenzará inmediatamente.
+    # Primero espera que lint y test terminen correctamente.
+    #
+    # Esto genera el siguiente gráfico:
+    #
+    # lint ─┐
+    #       ├── build
+    # test ─┘
+    #
+    # Si lint o test fallan, build será omitido.
     needs:
+
+      # Identificador interno del job de lint.
       - lint
+
+      # Identificador interno del job de pruebas.
       - test
 
     steps:
+
+      # Este job también necesita descargar el repositorio,
+      # porque cada job utiliza una máquina independiente.
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Construye la imagen usando el Dockerfile de la raíz.
       - name: Build Lambda image
+
+        # "docker build" crea la imagen.
+        #
+        # "-t" asigna un nombre y una etiqueta.
+        #
+        # "lambda-poc" es el nombre de la imagen.
+        #
+        # github.sha contiene el identificador completo del commit
+        # que activó el workflow.
+        #
+        # Ejemplo:
+        # lambda-poc:c3cf960abc123...
+        #
+        # Esto permite relacionar una imagen con el código exacto
+        # que la produjo.
+        #
+        # El punto final "." indica que Docker debe utilizar
+        # la raíz del repositorio como contexto de construcción.
         run: docker build -t lambda-poc:${{ github.sha }} .
