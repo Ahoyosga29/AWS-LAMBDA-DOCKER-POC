@@ -1,0 +1,24 @@
+﻿# Node.js
+node_modules/
+npm-debug.log*
+.env
+.env.*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
+
+# Docker/build
+build/
+dist/
+*.zip
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
