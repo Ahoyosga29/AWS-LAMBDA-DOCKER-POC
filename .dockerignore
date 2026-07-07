@@ -1,0 +1,23 @@
+# Git no es necesario durante la construcción de la imagen.
+.git
+.gitignore
+
+# Docker instalará sus propias dependencias dentro de la imagen.
+node_modules
+src/function/node_modules
+
+# Infraestructura, automatización y configuración del editor.
+terraform
+.github
+.vscode
+.idea
+
+# Documentación y pruebas que Lambda no necesita ejecutar.
+README.md
+src/function/*.test.js
+
+# Archivos locales, sensibles o generados.
+.env
+.env.*
+*.tfstate
+*.tfstate.*
